@@ -1,13 +1,17 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-declare_id!("TokenVau1t11111111111111111111111111111111");
+declare_id!("8mr7vpqXRnwiHsAs4c8dpLurgMWuoFNDmqFYbepqpqBJ");
 
 #[program]
 pub mod token_vault {
     use super::*;
 
-    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        config.admin_authority = ctx.accounts.admin_authority.key();
+        config.reward_mint = ctx.accounts.reward_mint.key();
+        config.reward_mint_bump = ctx.bumps.reward_mint;
         Ok(())
     }
 
@@ -71,9 +75,22 @@ pub struct StakePosition {
 pub struct Initialize<'info> {
     #[account(mut)]
     pub admin_authority: Signer<'info>,
-    #[account(init, payer = admin_authority, space = 8 + 32 + 32 + 1)]
+    #[account(
+        init,
+        payer = admin_authority,
+        space = 8 + 32 + 32 + 1,
+        seeds = [b"config"],
+        bump,
+    )]
     pub config: Account<'info, Config>,
-    #[account(mut)]
+    #[account(
+        init,
+        payer = admin_authority,
+        seeds = [b"reward_mint"],
+        bump,
+        mint::decimals = 9,
+        mint::authority = reward_mint,
+    )]
     pub reward_mint: Account<'info, Mint>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -83,6 +100,7 @@ pub struct Initialize<'info> {
 pub struct CreatePool<'info> {
     #[account(mut, has_one = admin_authority)]
     pub config: Account<'info, Config>,
+    #[account(mut)]
     pub admin_authority: Signer<'info>,
     #[account(init, payer = admin_authority, space = 8 + 32 + 32 + 32 + 32 + 8 + 8 + 2 + 1 + 1)]
     pub pool: Account<'info, Pool>,
