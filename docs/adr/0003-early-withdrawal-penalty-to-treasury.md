@@ -1,0 +1,5 @@
+# Early withdrawal forfeits reward entirely and pays a flat penalty to a per-pool treasury
+
+On Early Withdrawal, the user gets zero Reward (no pro-rata payout for time already staked) and pays a flat percentage penalty on principal, regardless of how much of the Lock Duration remains. Both were chosen for simplicity over precision: pro-rata reward and time-scaled penalties are more "fair" but require extra accounting this portfolio piece doesn't need to demonstrate.
+
+The penalty is transferred to a Treasury wallet set per Pool at creation — not "recycled" into the reward pool for other stakers. This was a direct correction of an earlier assumption: recycling only makes sense under a pre-funded reward-vault design, and we rejected that design in [0002-reward-token-minted-not-prefunded.md](./0002-reward-token-minted-not-prefunded.md). Since rewards are minted rather than held in a balance, there is no reward vault for a staked-token penalty to usefully flow into, so it goes to an explicit treasury destination instead.
