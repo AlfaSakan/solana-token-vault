@@ -12,11 +12,10 @@ early-withdrawal penalty routing, pause semantics).
 
 ## Status
 
-Early-stage: the account structs and instruction signatures exist; instruction bodies
-are being filled in ticket by ticket against the GitHub issue tracker (see
-[`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md)). `initialize` is
-implemented and tested; the rest (`create_pool`, `set_paused`, `stake`, `withdraw`,
-`withdraw_early`) are still stubs.
+All instructions are implemented and tested: `initialize`, `create_pool`,
+`set_paused`, `stake`, `withdraw`, `withdraw_early`. Work continues ticket by ticket
+against the GitHub issue tracker (see
+[`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md)).
 
 ## Prerequisites
 
@@ -56,3 +55,8 @@ yarn test
 Tests run against a [LiteSVM](https://github.com/LiteSVM/litesvm)-based harness
 (`tests/helpers/context.ts`) — no `solana-test-validator` process required. Each test
 gets a fresh, isolated LiteSVM instance with the compiled program loaded.
+
+## Deploy
+
+For deploying to devnet or mainnet (build flags, upgrade authority, smoke-test steps),
+see [`docs/deploy.md`](./docs/deploy.md).
