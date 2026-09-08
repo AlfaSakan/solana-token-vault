@@ -46,12 +46,53 @@ export type TokenVault = {
         { "name": "systemProgram" }
       ],
       "args": []
+    },
+    {
+      "name": "createPool",
+      "discriminator": [233, 146, 209, 142, 207, 104, 64, 188],
+      "accounts": [
+        { "name": "config" },
+        { "name": "adminAuthority", "writable": true, "signer": true },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [112, 111, 111, 108] },
+              { "kind": "account", "path": "stakeMint" }
+            ]
+          }
+        },
+        { "name": "stakeMint" },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [118, 97, 117, 108, 116] },
+              { "kind": "account", "path": "pool" }
+            ]
+          }
+        },
+        { "name": "treasury" },
+        { "name": "tokenProgram" },
+        { "name": "systemProgram" }
+      ],
+      "args": [
+        { "name": "lockDurationSeconds", "type": "i64" },
+        { "name": "rewardRateBps", "type": "u64" },
+        { "name": "earlyWithdrawalPenaltyBps", "type": "u16" }
+      ]
     }
   ],
   "accounts": [
     {
       "name": "config",
       "discriminator": [155, 12, 170, 224, 30, 250, 204, 130]
+    },
+    {
+      "name": "pool",
+      "discriminator": [241, 154, 109, 4, 17, 177, 109, 188]
     }
   ],
   "types": [
@@ -63,6 +104,24 @@ export type TokenVault = {
           { "name": "adminAuthority", "type": "pubkey" },
           { "name": "rewardMint", "type": "pubkey" },
           { "name": "rewardMintBump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "config", "type": "pubkey" },
+          { "name": "stakeMint", "type": "pubkey" },
+          { "name": "vault", "type": "pubkey" },
+          { "name": "treasury", "type": "pubkey" },
+          { "name": "lockDurationSeconds", "type": "i64" },
+          { "name": "rewardRateBps", "type": "u64" },
+          { "name": "earlyWithdrawalPenaltyBps", "type": "u16" },
+          { "name": "paused", "type": "bool" },
+          { "name": "bump", "type": "u8" },
+          { "name": "vaultBump", "type": "u8" }
         ]
       }
     }

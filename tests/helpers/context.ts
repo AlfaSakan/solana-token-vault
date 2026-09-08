@@ -2,9 +2,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { LiteSVM } from "litesvm";
 import { LiteSVMProvider } from "anchor-litesvm";
+import {
+  createInitializeMint2Instruction,
+  getMinimumBalanceForRentExemptMint,
+  MINT_SIZE,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import type { TokenVault } from "../../idl/token_vault";
 
 const PROGRAM_SO_PATH = path.join(__dirname, "../../target/deploy/token_vault.so");
@@ -17,6 +23,8 @@ const IDL = JSON.parse(fs.readFileSync(IDL_PATH, "utf8"));
 /** Seeds must stay in sync with programs/token-vault/src/lib.rs. */
 export const CONFIG_SEED = Buffer.from("config");
 export const REWARD_MINT_SEED = Buffer.from("reward_mint");
+export const POOL_SEED = Buffer.from("pool");
+export const VAULT_SEED = Buffer.from("vault");
 
 export interface TestContext {
   svm: LiteSVM;
@@ -57,4 +65,41 @@ export function deriveConfigPda(programId: PublicKey): [PublicKey, number] {
 
 export function deriveRewardMintPda(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([REWARD_MINT_SEED], programId);
+}
+
+export function derivePoolPda(stakeMint: PublicKey, programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([POOL_SEED, stakeMint.toBuffer()], programId);
+}
+
+export function deriveVaultPda(pool: PublicKey, programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([VAULT_SEED, pool.toBuffer()], programId);
+}
+
+/**
+ * Creates a standalone SPL mint (not part of the token-vault program) to use
+ * as a Pool's stake mint in tests. Funded and signed by `payer`.
+ */
+export async function createStakeMint(
+  ctx: TestContext,
+  payer: anchor.web3.Keypair,
+  decimals = 6
+): Promise<PublicKey> {
+  const mint = Keypair.generate();
+  const lamports = await getMinimumBalanceForRentExemptMint(ctx.provider.connection);
+
+  const tx = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: payer.publicKey,
+      newAccountPubkey: mint.publicKey,
+      space: MINT_SIZE,
+      lamports,
+      programId: TOKEN_PROGRAM_ID,
+    }),
+    createInitializeMint2Instruction(mint.publicKey, decimals, payer.publicKey, null, TOKEN_PROGRAM_ID)
+  );
+  tx.feePayer = payer.publicKey;
+
+  await ctx.provider.sendAndConfirm!(tx, [payer, mint]);
+
+  return mint.publicKey;
 }

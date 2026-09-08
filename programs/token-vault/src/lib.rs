@@ -16,11 +16,22 @@ pub mod token_vault {
     }
 
     pub fn create_pool(
-        _ctx: Context<CreatePool>,
-        _lock_duration_seconds: i64,
-        _reward_rate_bps: u64,
-        _early_withdrawal_penalty_bps: u16,
+        ctx: Context<CreatePool>,
+        lock_duration_seconds: i64,
+        reward_rate_bps: u64,
+        early_withdrawal_penalty_bps: u16,
     ) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
+        pool.config = ctx.accounts.config.key();
+        pool.stake_mint = ctx.accounts.stake_mint.key();
+        pool.vault = ctx.accounts.vault.key();
+        pool.treasury = ctx.accounts.treasury.key();
+        pool.lock_duration_seconds = lock_duration_seconds;
+        pool.reward_rate_bps = reward_rate_bps;
+        pool.early_withdrawal_penalty_bps = early_withdrawal_penalty_bps;
+        pool.paused = false;
+        pool.bump = ctx.bumps.pool;
+        pool.vault_bump = ctx.bumps.vault;
         Ok(())
     }
 
@@ -50,7 +61,7 @@ pub struct Config {
 
 #[account]
 pub struct Pool {
-    pub authority_config: Pubkey,
+    pub config: Pubkey,
     pub stake_mint: Pubkey,
     pub vault: Pubkey,
     pub treasury: Pubkey,
@@ -59,6 +70,7 @@ pub struct Pool {
     pub early_withdrawal_penalty_bps: u16,
     pub paused: bool,
     pub bump: u8,
+    pub vault_bump: u8,
 }
 
 #[account]
@@ -98,14 +110,27 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct CreatePool<'info> {
-    #[account(mut, has_one = admin_authority)]
+    #[account(has_one = admin_authority)]
     pub config: Account<'info, Config>,
     #[account(mut)]
     pub admin_authority: Signer<'info>,
-    #[account(init, payer = admin_authority, space = 8 + 32 + 32 + 32 + 32 + 8 + 8 + 2 + 1 + 1)]
+    #[account(
+        init,
+        payer = admin_authority,
+        space = 8 + 32 + 32 + 32 + 32 + 8 + 8 + 2 + 1 + 1 + 1,
+        seeds = [b"pool", stake_mint.key().as_ref()],
+        bump,
+    )]
     pub pool: Account<'info, Pool>,
     pub stake_mint: Account<'info, Mint>,
-    #[account(mut)]
+    #[account(
+        init,
+        payer = admin_authority,
+        seeds = [b"vault", pool.key().as_ref()],
+        bump,
+        token::mint = stake_mint,
+        token::authority = vault,
+    )]
     pub vault: Account<'info, TokenAccount>,
     /// CHECK: treasury is an arbitrary destination wallet chosen by the admin, not read or written here
     pub treasury: UncheckedAccount<'info>,
