@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, Token, TokenAccount};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 declare_id!("8mr7vpqXRnwiHsAs4c8dpLurgMWuoFNDmqFYbepqpqBJ");
 
@@ -39,7 +39,32 @@ pub mod token_vault {
         Ok(())
     }
 
-    pub fn stake(_ctx: Context<Stake>, _amount: u64) -> Result<()> {
+    pub fn stake(ctx: Context<Stake>, amount: u64, _position_nonce: u64) -> Result<()> {
+        require!(amount > 0, TokenVaultError::ZeroAmount);
+
+        let pool = &ctx.accounts.pool;
+        let now = Clock::get()?.unix_timestamp;
+
+        let stake_position = &mut ctx.accounts.stake_position;
+        stake_position.pool = pool.key();
+        stake_position.owner = ctx.accounts.owner.key();
+        stake_position.amount = amount;
+        stake_position.staked_at = now;
+        stake_position.unlocks_at = now + pool.lock_duration_seconds;
+        stake_position.bump = ctx.bumps.stake_position;
+
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.owner_token_account.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
         Ok(())
     }
 
@@ -148,16 +173,32 @@ pub struct SetPaused<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(amount: u64, position_nonce: u64)]
 pub struct Stake<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-    #[account(mut)]
+    #[account(constraint = !pool.paused @ TokenVaultError::PoolPaused)]
     pub pool: Account<'info, Pool>,
-    #[account(init, payer = owner, space = 8 + 32 + 32 + 8 + 8 + 8 + 1)]
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + 32 + 32 + 8 + 8 + 8 + 1,
+        seeds = [
+            b"stake_position",
+            pool.key().as_ref(),
+            owner.key().as_ref(),
+            &position_nonce.to_le_bytes(),
+        ],
+        bump,
+    )]
     pub stake_position: Account<'info, StakePosition>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = owner_token_account.owner == owner.key(),
+        constraint = owner_token_account.mint == pool.stake_mint,
+    )]
     pub owner_token_account: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, address = pool.vault)]
     pub vault: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -206,4 +247,6 @@ pub enum TokenVaultError {
     StillLocked,
     #[msg("Stake position is already unlocked, use withdraw instead of withdraw_early")]
     AlreadyUnlocked,
+    #[msg("Stake amount must be greater than zero")]
+    ZeroAmount,
 }

@@ -6,10 +6,14 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import { LiteSVM } from "litesvm";
 import { LiteSVMProvider } from "anchor-litesvm";
 import {
+  createAssociatedTokenAccountInstruction,
   createInitializeMint2Instruction,
+  createMintToInstruction,
+  getAssociatedTokenAddressSync,
   getMinimumBalanceForRentExemptMint,
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
+  unpackAccount,
 } from "@solana/spl-token";
 import type { TokenVault } from "../../idl/token_vault";
 
@@ -25,6 +29,7 @@ export const CONFIG_SEED = Buffer.from("config");
 export const REWARD_MINT_SEED = Buffer.from("reward_mint");
 export const POOL_SEED = Buffer.from("pool");
 export const VAULT_SEED = Buffer.from("vault");
+export const STAKE_POSITION_SEED = Buffer.from("stake_position");
 
 export interface TestContext {
   svm: LiteSVM;
@@ -75,6 +80,18 @@ export function deriveVaultPda(pool: PublicKey, programId: PublicKey): [PublicKe
   return PublicKey.findProgramAddressSync([VAULT_SEED, pool.toBuffer()], programId);
 }
 
+export function deriveStakePositionPda(
+  pool: PublicKey,
+  owner: PublicKey,
+  positionNonce: anchor.BN,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [STAKE_POSITION_SEED, pool.toBuffer(), owner.toBuffer(), positionNonce.toArrayLike(Buffer, "le", 8)],
+    programId
+  );
+}
+
 /**
  * Creates a standalone SPL mint (not part of the token-vault program) to use
  * as a Pool's stake mint in tests. Funded and signed by `payer`.
@@ -102,4 +119,46 @@ export async function createStakeMint(
   await ctx.provider.sendAndConfirm!(tx, [payer, mint]);
 
   return mint.publicKey;
+}
+
+/**
+ * Creates `owner`'s associated token account for `mint` and mints `amount` of
+ * it, signed by `mintAuthority` (the mint's authority — for stake mints
+ * created via `createStakeMint`, that's the `payer` passed to it). Returns
+ * the ATA address.
+ */
+export async function mintTokensTo(
+  ctx: TestContext,
+  mint: PublicKey,
+  owner: PublicKey,
+  amount: bigint,
+  payer: anchor.web3.Keypair,
+  mintAuthority: anchor.web3.Keypair
+): Promise<PublicKey> {
+  const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+
+  const tx = new Transaction().add(
+    createAssociatedTokenAccountInstruction(payer.publicKey, ata, owner, mint, TOKEN_PROGRAM_ID),
+    createMintToInstruction(mint, ata, mintAuthority.publicKey, amount, [], TOKEN_PROGRAM_ID)
+  );
+  tx.feePayer = payer.publicKey;
+
+  const signers = mintAuthority.publicKey.equals(payer.publicKey) ? [payer] : [payer, mintAuthority];
+  await ctx.provider.sendAndConfirm!(tx, signers);
+
+  return ata;
+}
+
+/** Reads an SPL token account's `amount` field directly from LiteSVM state. */
+export function getTokenBalance(ctx: TestContext, tokenAccount: PublicKey): bigint {
+  const accountInfo = ctx.svm.getAccount(tokenAccount);
+  if (!accountInfo) {
+    throw new Error(`token account ${tokenAccount.toBase58()} does not exist`);
+  }
+  const unpacked = unpackAccount(
+    tokenAccount,
+    { ...accountInfo, data: Buffer.from(accountInfo.data) } as anchor.web3.AccountInfo<Buffer>,
+    TOKEN_PROGRAM_ID
+  );
+  return unpacked.amount;
 }

@@ -83,6 +83,37 @@ export type TokenVault = {
         { "name": "rewardRateBps", "type": "u64" },
         { "name": "earlyWithdrawalPenaltyBps", "type": "u16" }
       ]
+    },
+    {
+      "name": "stake",
+      "discriminator": [206, 176, 202, 18, 200, 209, 179, 108],
+      "accounts": [
+        { "name": "owner", "writable": true, "signer": true },
+        { "name": "pool" },
+        {
+          "name": "stakePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 97, 107, 101, 95, 112, 111, 115, 105, 116, 105, 111, 110]
+              },
+              { "kind": "account", "path": "pool" },
+              { "kind": "account", "path": "owner" },
+              { "kind": "arg", "path": "position_nonce" }
+            ]
+          }
+        },
+        { "name": "ownerTokenAccount", "writable": true },
+        { "name": "vault", "writable": true },
+        { "name": "tokenProgram" },
+        { "name": "systemProgram" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "positionNonce", "type": "u64" }
+      ]
     }
   ],
   "accounts": [
@@ -93,6 +124,10 @@ export type TokenVault = {
     {
       "name": "pool",
       "discriminator": [241, 154, 109, 4, 17, 177, 109, 188]
+    },
+    {
+      "name": "stakePosition",
+      "discriminator": [78, 165, 30, 111, 171, 125, 11, 220]
     }
   ],
   "types": [
@@ -124,6 +159,20 @@ export type TokenVault = {
           { "name": "vaultBump", "type": "u8" }
         ]
       }
+    },
+    {
+      "name": "stakePosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "pool", "type": "pubkey" },
+          { "name": "owner", "type": "pubkey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "stakedAt", "type": "i64" },
+          { "name": "unlocksAt", "type": "i64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
     }
   ],
   "errors": [
@@ -137,6 +186,7 @@ export type TokenVault = {
       "code": 6002,
       "name": "AlreadyUnlocked",
       "msg": "Stake position is already unlocked, use withdraw instead of withdraw_early"
-    }
+    },
+    { "code": 6003, "name": "ZeroAmount", "msg": "Stake amount must be greater than zero" }
   ]
 };
