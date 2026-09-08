@@ -145,6 +145,20 @@ export type TokenVault = {
         { "name": "tokenProgram" }
       ],
       "args": []
+    },
+    {
+      "name": "withdrawEarly",
+      "discriminator": [173, 230, 246, 12, 114, 228, 15, 106],
+      "accounts": [
+        { "name": "owner", "writable": true, "signer": true },
+        { "name": "pool" },
+        { "name": "stakePosition", "writable": true },
+        { "name": "ownerTokenAccount", "writable": true },
+        { "name": "vault", "writable": true },
+        { "name": "treasuryTokenAccount", "writable": true },
+        { "name": "tokenProgram" }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -219,6 +233,13 @@ export type TokenVault = {
       "msg": "Stake position is already unlocked, use withdraw instead of withdraw_early"
     },
     { "code": 6003, "name": "ZeroAmount", "msg": "Stake amount must be greater than zero" },
-    { "code": 6004, "name": "RewardOverflow", "msg": "Computed Reward overflows u64" }
+    { "code": 6004, "name": "RewardOverflow", "msg": "Computed Reward overflows u64" },
+    { "code": 6005, "name": "PenaltyOverflow", "msg": "Computed Penalty overflows u64" },
+    { "code": 6006, "name": "InvalidLockDuration", "msg": "Lock duration must be greater than zero" },
+    {
+      "code": 6007,
+      "name": "InvalidPenaltyBps",
+      "msg": "Early withdrawal penalty cannot exceed 10000 basis points (100%)"
+    }
   ]
 };

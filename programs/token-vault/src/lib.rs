@@ -7,6 +7,11 @@ declare_id!("8mr7vpqXRnwiHsAs4c8dpLurgMWuoFNDmqFYbepqpqBJ");
 /// denominator when pro-rating a Stake Position's Lock Duration into a Reward.
 const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
 
+/// Signer seeds for CPIs made with the vault PDA as authority.
+fn vault_signer_seeds<'a>(pool_key: &'a Pubkey, vault_bump: &'a u8) -> [&'a [u8]; 3] {
+    [b"vault", pool_key.as_ref(), std::slice::from_ref(vault_bump)]
+}
+
 #[program]
 pub mod token_vault {
     use super::*;
@@ -25,6 +30,12 @@ pub mod token_vault {
         reward_rate_bps: u64,
         early_withdrawal_penalty_bps: u16,
     ) -> Result<()> {
+        require!(lock_duration_seconds > 0, TokenVaultError::InvalidLockDuration);
+        require!(
+            early_withdrawal_penalty_bps <= 10_000,
+            TokenVaultError::InvalidPenaltyBps
+        );
+
         let pool = &mut ctx.accounts.pool;
         pool.config = ctx.accounts.config.key();
         pool.stake_mint = ctx.accounts.stake_mint.key();
@@ -88,7 +99,8 @@ pub mod token_vault {
             .map_err(|_| TokenVaultError::RewardOverflow)?;
 
         let pool_key = pool.key();
-        let vault_seeds: &[&[u8]] = &[b"vault", pool_key.as_ref(), &[pool.vault_bump]];
+        let vault_seeds = vault_signer_seeds(&pool_key, &pool.vault_bump);
+        let vault_seeds: &[&[u8]] = &vault_seeds;
 
         token::transfer(
             CpiContext::new_with_signer(
@@ -122,7 +134,48 @@ pub mod token_vault {
         Ok(())
     }
 
-    pub fn withdraw_early(_ctx: Context<WithdrawEarly>) -> Result<()> {
+    pub fn withdraw_early(ctx: Context<WithdrawEarly>) -> Result<()> {
+        let stake_position = &ctx.accounts.stake_position;
+        let pool = &ctx.accounts.pool;
+        let now = Clock::get()?.unix_timestamp;
+        require!(now < stake_position.unlocks_at, TokenVaultError::AlreadyUnlocked);
+
+        let amount = stake_position.amount;
+        let penalty: u64 = ((amount as u128) * (pool.early_withdrawal_penalty_bps as u128) / 10_000u128)
+            .try_into()
+            .map_err(|_| TokenVaultError::PenaltyOverflow)?;
+        let payout = amount - penalty;
+
+        let pool_key = pool.key();
+        let vault_seeds = vault_signer_seeds(&pool_key, &pool.vault_bump);
+        let vault_seeds: &[&[u8]] = &vault_seeds;
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.owner_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[vault_seeds],
+            ),
+            payout,
+        )?;
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.treasury_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[vault_seeds],
+            ),
+            penalty,
+        )?;
+
         Ok(())
     }
 }
@@ -290,11 +343,19 @@ pub struct WithdrawEarly<'info> {
     pub pool: Account<'info, Pool>,
     #[account(mut, close = owner, has_one = owner, has_one = pool)]
     pub stake_position: Account<'info, StakePosition>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = owner_token_account.owner == owner.key(),
+        constraint = owner_token_account.mint == pool.stake_mint,
+    )]
     pub owner_token_account: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, address = pool.vault)]
     pub vault: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = treasury_token_account.owner == pool.treasury,
+        constraint = treasury_token_account.mint == pool.stake_mint,
+    )]
     pub treasury_token_account: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
@@ -311,4 +372,10 @@ pub enum TokenVaultError {
     ZeroAmount,
     #[msg("Computed Reward overflows u64")]
     RewardOverflow,
+    #[msg("Computed Penalty overflows u64")]
+    PenaltyOverflow,
+    #[msg("Lock duration must be greater than zero")]
+    InvalidLockDuration,
+    #[msg("Early withdrawal penalty cannot exceed 10000 basis points (100%)")]
+    InvalidPenaltyBps,
 }
