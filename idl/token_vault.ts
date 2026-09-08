@@ -85,6 +85,16 @@ export type TokenVault = {
       ]
     },
     {
+      "name": "setPaused",
+      "discriminator": [91, 60, 125, 192, 176, 225, 166, 218],
+      "accounts": [
+        { "name": "config" },
+        { "name": "adminAuthority", "signer": true },
+        { "name": "pool", "writable": true }
+      ],
+      "args": [{ "name": "paused", "type": "bool" }]
+    },
+    {
       "name": "stake",
       "discriminator": [206, 176, 202, 18, 200, 209, 179, 108],
       "accounts": [

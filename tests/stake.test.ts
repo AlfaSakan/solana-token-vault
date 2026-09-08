@@ -15,24 +15,6 @@ import {
   TestContext,
 } from "./helpers/context";
 
-/**
- * Flips a Pool account's `paused` byte directly in LiteSVM state. Workaround
- * for `set_paused` (issue #5) not being implemented yet — Pool layout is
- * disc(8) + config(32) + stake_mint(32) + vault(32) + treasury(32) +
- * lock_duration_seconds(8) + reward_rate_bps(8) + early_withdrawal_penalty_bps(2),
- * then `paused: bool` as the next byte.
- */
-function setPoolPausedByte(ctx: TestContext, poolPda: PublicKey, paused: boolean) {
-  const PAUSED_OFFSET = 8 + 32 * 4 + 8 + 8 + 2;
-  const account = ctx.svm.getAccount(poolPda);
-  if (!account) {
-    throw new Error(`pool account ${poolPda.toBase58()} does not exist`);
-  }
-  const data = Buffer.from(account.data);
-  data[PAUSED_OFFSET] = paused ? 1 : 0;
-  ctx.svm.setAccount(poolPda, { ...account, data });
-}
-
 describe("stake", () => {
   let ctx: TestContext;
   let admin: Keypair;
@@ -183,9 +165,15 @@ describe("stake", () => {
     const nonce = new anchor.BN(0);
     const [stakePositionPda] = deriveStakePositionPda(poolPda, owner.publicKey, nonce, ctx.program.programId);
 
-    // `set_paused` (issue #5) isn't implemented yet, so flip the Pool's
-    // `paused` byte directly to exercise `stake`'s own pause check.
-    setPoolPausedByte(ctx, poolPda, true);
+    await ctx.program.methods
+      .setPaused(true)
+      .accounts({
+        config: configPda,
+        adminAuthority: admin.publicKey,
+        pool: poolPda,
+      })
+      .signers([admin])
+      .rpc();
 
     let error: anchor.AnchorError | undefined;
     try {

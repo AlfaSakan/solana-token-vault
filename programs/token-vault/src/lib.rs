@@ -35,7 +35,8 @@ pub mod token_vault {
         Ok(())
     }
 
-    pub fn set_paused(_ctx: Context<SetPaused>, _paused: bool) -> Result<()> {
+    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        ctx.accounts.pool.paused = paused;
         Ok(())
     }
 
@@ -168,7 +169,7 @@ pub struct SetPaused<'info> {
     #[account(has_one = admin_authority)]
     pub config: Account<'info, Config>,
     pub admin_authority: Signer<'info>,
-    #[account(mut)]
+    #[account(mut, has_one = config)]
     pub pool: Account<'info, Pool>,
 }
 
