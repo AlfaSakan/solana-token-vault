@@ -149,6 +149,29 @@ export async function mintTokensTo(
   return ata;
 }
 
+/**
+ * Creates `owner`'s associated token account for `mint` without minting
+ * anything into it — used for destinations like a Reward Token account whose
+ * balance the program itself is expected to mint into.
+ */
+export async function createAssociatedTokenAccount(
+  ctx: TestContext,
+  mint: PublicKey,
+  owner: PublicKey,
+  payer: anchor.web3.Keypair
+): Promise<PublicKey> {
+  const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+
+  const tx = new Transaction().add(
+    createAssociatedTokenAccountInstruction(payer.publicKey, ata, owner, mint, TOKEN_PROGRAM_ID)
+  );
+  tx.feePayer = payer.publicKey;
+
+  await ctx.provider.sendAndConfirm!(tx, [payer]);
+
+  return ata;
+}
+
 /** Reads an SPL token account's `amount` field directly from LiteSVM state. */
 export function getTokenBalance(ctx: TestContext, tokenAccount: PublicKey): bigint {
   const accountInfo = ctx.svm.getAccount(tokenAccount);

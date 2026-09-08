@@ -1,7 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 
 declare_id!("8mr7vpqXRnwiHsAs4c8dpLurgMWuoFNDmqFYbepqpqBJ");
+
+/// Reward Rate (CONTEXT.md) is basis points *per year* — used as the
+/// denominator when pro-rating a Stake Position's Lock Duration into a Reward.
+const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
 
 #[program]
 pub mod token_vault {
@@ -69,7 +73,52 @@ pub mod token_vault {
         Ok(())
     }
 
-    pub fn withdraw(_ctx: Context<Withdraw>) -> Result<()> {
+    pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
+        let stake_position = &ctx.accounts.stake_position;
+        let pool = &ctx.accounts.pool;
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= stake_position.unlocks_at, TokenVaultError::StillLocked);
+
+        let amount = stake_position.amount;
+        let reward: u64 = ((amount as u128)
+            * (pool.reward_rate_bps as u128)
+            * (pool.lock_duration_seconds as u128)
+            / (10_000u128 * SECONDS_PER_YEAR as u128))
+            .try_into()
+            .map_err(|_| TokenVaultError::RewardOverflow)?;
+
+        let pool_key = pool.key();
+        let vault_seeds: &[&[u8]] = &[b"vault", pool_key.as_ref(), &[pool.vault_bump]];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.owner_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[vault_seeds],
+            ),
+            amount,
+        )?;
+
+        let reward_mint_seeds: &[&[u8]] =
+            &[b"reward_mint", &[ctx.accounts.config.reward_mint_bump]];
+
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.reward_mint.to_account_info(),
+                    to: ctx.accounts.owner_reward_token_account.to_account_info(),
+                    authority: ctx.accounts.reward_mint.to_account_info(),
+                },
+                &[reward_mint_seeds],
+            ),
+            reward,
+        )?;
+
         Ok(())
     }
 
@@ -209,17 +258,27 @@ pub struct Stake<'info> {
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
+    #[account(has_one = config)]
     pub pool: Account<'info, Pool>,
+    #[account(seeds = [b"config"], bump)]
     pub config: Account<'info, Config>,
     #[account(mut, close = owner, has_one = owner, has_one = pool)]
     pub stake_position: Account<'info, StakePosition>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = owner_token_account.owner == owner.key(),
+        constraint = owner_token_account.mint == pool.stake_mint,
+    )]
     pub owner_token_account: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, address = pool.vault)]
     pub vault: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = owner_reward_token_account.owner == owner.key(),
+        constraint = owner_reward_token_account.mint == reward_mint.key(),
+    )]
     pub owner_reward_token_account: Account<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, address = config.reward_mint)]
     pub reward_mint: Account<'info, Mint>,
     pub token_program: Program<'info, Token>,
 }
@@ -250,4 +309,6 @@ pub enum TokenVaultError {
     AlreadyUnlocked,
     #[msg("Stake amount must be greater than zero")]
     ZeroAmount,
+    #[msg("Computed Reward overflows u64")]
+    RewardOverflow,
 }

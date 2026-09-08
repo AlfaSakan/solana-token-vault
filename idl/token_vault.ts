@@ -124,6 +124,27 @@ export type TokenVault = {
         { "name": "amount", "type": "u64" },
         { "name": "positionNonce", "type": "u64" }
       ]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [183, 18, 70, 156, 148, 109, 161, 34],
+      "accounts": [
+        { "name": "owner", "writable": true, "signer": true },
+        { "name": "pool" },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [{ "kind": "const", "value": [99, 111, 110, 102, 105, 103] }]
+          }
+        },
+        { "name": "stakePosition", "writable": true },
+        { "name": "ownerTokenAccount", "writable": true },
+        { "name": "vault", "writable": true },
+        { "name": "ownerRewardTokenAccount", "writable": true },
+        { "name": "rewardMint", "writable": true },
+        { "name": "tokenProgram" }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -197,6 +218,7 @@ export type TokenVault = {
       "name": "AlreadyUnlocked",
       "msg": "Stake position is already unlocked, use withdraw instead of withdraw_early"
     },
-    { "code": 6003, "name": "ZeroAmount", "msg": "Stake amount must be greater than zero" }
+    { "code": 6003, "name": "ZeroAmount", "msg": "Stake amount must be greater than zero" },
+    { "code": 6004, "name": "RewardOverflow", "msg": "Computed Reward overflows u64" }
   ]
 };
